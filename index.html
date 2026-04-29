@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>PharmStock AI — Apotek Faliq</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
@@ -960,7 +960,7 @@ async function confirmRestock() {
     state.restockSearch = '';
     showToast('✅ Restock berhasil disimpan!');
     await loadAll();
-  } catch(e) { showToast('❌ Gagal: '+e.message); }
+  } catch(e) { showToast('❌ Error: '+(e?.message||e?.details||JSON.stringify(e))); }
 }
 
 function openAddDrug() { state.editDrug=null; state.modal='drug'; render(); }
@@ -1002,16 +1002,16 @@ async function saveDrug(id) {
 
   try {
     if(id&&id!=='null') {
-      await db.from('drugs').update(data).eq('id',id);
+      const {error:updErr} = await db.from('drugs').update(data).eq('id',id); if(updErr) throw updErr;
       showToast(`✅ ${name} diperbarui!`);
     } else {
-      await db.from('drugs').insert(data);
+      const {data:insData, error:insErr} = await db.from('drugs').insert(data); if(insErr) throw insErr;
       showToast(`✅ ${name} ditambahkan!`);
     }
     state.modal = null;
     await loadDrugs();
     render();
-  } catch(e) { showToast('❌ Gagal: '+e.message); }
+  } catch(e) { showToast('❌ Error: '+(e?.message||e?.details||JSON.stringify(e))); }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1150,7 +1150,7 @@ async function addStaff() {
     const {data} = await db.from('staff').select('*').eq('is_active',true).order('name');
     state.staffList = data||[];
     render();
-  } catch(e) { showToast('❌ Gagal: '+e.message); }
+  } catch(e) { showToast('❌ Error: '+(e?.message||e?.details||JSON.stringify(e))); }
 }
 
 async function removeStaff(id) {
@@ -1160,7 +1160,7 @@ async function removeStaff(id) {
     const {data} = await db.from('staff').select('*').eq('is_active',true).order('name');
     state.staffList = data||[];
     render();
-  } catch(e) { showToast('❌ Gagal: '+e.message); }
+  } catch(e) { showToast('❌ Error: '+(e?.message||e?.details||JSON.stringify(e))); }
 }
 
 window.onload = () => {
