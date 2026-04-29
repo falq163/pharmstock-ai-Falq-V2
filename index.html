@@ -128,6 +128,1203 @@
 
   /* Chart container */
   .chart-wrap{position:relative;height:140px;margin-top:10px}
+
+  /* ── UI POLISH ── */
+  /* Smooth active states */
+  .btn:active{transform:scale(.97)}
+  .btn-green:hover{filter:brightness(1.05)}
+  .btn-blue:hover{filter:brightness(1.05)}
+  .btn-purple:hover{filter:brightness(1.05)}
+
+  /* Better nav shadow */
+  .nav{box-shadow:0 -4px 20px rgba(0,0,0,.08)}
+  .nav-btn{transition:color .2s, transform .1s}
+  .nav-btn:active{transform:scale(.9)}
+
+  /* Card hover */
+  .card{transition:box-shadow .2s}
+
+  /* Drug card polish */
+  .drug-card{transition:transform .15s, box-shadow .15s, border-color .15s}
+  .drug-card:hover{box-shadow:0 6px 16px rgba(0,0,0,.1)}
+
+  /* Login page polish */
+  .login-btn{transition:transform .15s, box-shadow .15s}
+  .login-btn:active{transform:scale(.98)}
+
+  /* Form inputs */
+  input,select,textarea{transition:border-color .2s, box-shadow .2s}
+  input:focus,select:focus{box-shadow:0 0 0 3px rgba(22,163,74,.12)}
+
+  /* Modal animation */
+  .modal{animation:slideUp .25s ease}
+  @keyframes slideUp{from{transform:translateY(30px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+  /* Badge polish */
+  .badge{border-radius:6px}
+
+  /* KPI card hover */
+  .kpi{transition:transform .15s, box-shadow .15s}
+  .kpi:active{transform:scale(.98)}
+
+  /* Scrollbar hidden globally */
+  *::-webkit-scrollbar{display:none}
+  *{-ms-overflow-style:none;scrollbar-width:none}
+
+  /* Toast bigger padding */
+  .toast{padding:12px 24px;border-radius:14px;font-size:13.5px;box-shadow:0 8px 24px rgba(0,0,0,.2)}
+
+  /* Category filter active pill */
+  .cat-btn{transition:all .15s}
+  .cat-btn.active{box-shadow:0 2px 8px rgba(22,163,74,.3)}
+
+  /* TX item polish */
+  .tx-item{transition:background .15s}
+  .tx-item:hover{background:#f3f4f6}
+
+  /* Modal close button */
+  .modal-close{transition:background .15s}
+  .modal-close:hover{background:#e5e7eb}
+
+  /* Better border radius for drug list cards in admin */
+  .drug-list-card{border-radius:16px}
+
+  /* Floating action button pulse on cart */
+  .cart-fab button{transition:transform .15s, box-shadow .15s}
+  .cart-fab button:active{transform:scale(.98)}
+
+  /* Page transitions */
+  .page{animation:fadeIn .2s ease}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════ -->
+<!-- CONFIG — Ganti dengan data Supabase lo  -->
+<!-- ════════════════════════════════════════ -->
+<script>
+const SUPABASE_URL  = 'https://ngykpayeuycxqwziowup.supabase.co';
+const SUPABASE_KEY  = 'sb_publishable_d4jflZtoXkvyXlHdp3sV1w_yfxKDy55';
+const DEFAULT_NAME = 'Apotek Faliq';
+let APOTEK_NAME = localStorage.getItem('apotek_name') || DEFAULT_NAME;
+
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const SUPPLIERS = ['Kimia Farma','Sanbe Farma','Dexa Medica','Kalbe Farma','Hexpharm','GlaxoSmithKline'];
+const CATEGORIES_LIST = ['Antibiotik','Analgesik','Antidiabetik','Antihipertensi','GI','Antihistamin','Antilipemik','Bronkodilator','Kortikosteroid','Vitamin','Lainnya'];
+const UNITS = ['box','strip','pcs','botol','tablet','kapsul','sachet','tube'];
+const UNITS_LARGE = ['box','botol','sachet'];
+const UNITS_SMALL = ['strip','tablet','kapsul','pcs','ml'];
+
+const fmt = n => new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(n||0);
+const fmtShort = n => n>=1000000?`${(n/1000000).toFixed(1)}Jt`:n>=1000?`${(n/1000).toFixed(0)}Rb`:(n||0);
+const nowTime = () => new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+const today = () => new Date().toISOString().split('T')[0];
+
+// ── State ──────────────────────────────────────────────────
+let state = {
+  page: 'login',       // login | dashboard | kasir | admin
+  mode: 'jual',        // jual | restock
+  staff: '',
+  staffList: [],
+  drugs: [],
+  cart: [],
+  restockItems: [],
+  restockSearch: '',
+  transactions: [],
+  topSelling: [],
+  hourlyData: [],
+  critical: [],
+  revenue: 0,
+  txCount: 0,
+  search: '',
+  catFilter: 'Semua',
+  lastUpdate: nowTime(),
+  adminSearch: '',
+  adminCat: 'Semua',
+  adminStatus: 'Semua',
+  modal: null,
+  role: '',             // kasir | apoteker
+  pinModal: false,
+  pinInput: '',
+  pinTarget: '',
+  staffSales: [],
+  editDrug: null,
+  loading: false,
+  chart: null,
+};
+
+// ── Render engine ──────────────────────────────────────────
+function render() {
+  const app = document.getElementById('app');
+  if(state.pinModal) { app.innerHTML = renderPinModal(); return; }
+  if(state.page === 'login') { app.innerHTML = renderLogin(); bindLogin(); return; }
+  app.innerHTML = `
+    ${renderNav()}
+    <div class="page">
+      ${state.page==='dashboard' ? renderDashboard() : ''}
+      ${state.page==='kasir' ? renderKasir() : ''}
+      ${state.page==='admin' ? renderAdmin() : ''}
+      ${state.page==='settings' ? renderSettings() : ''}
+    </div>
+    ${state.modal ? renderModal() : ''}
+  `;
+  bindEvents();
+  if(state.page==='dashboard') initChart();
+}
+
+// ── TOAST ─────────────────────────────────────────────────
+function showToast(msg, dur=2500) {
+  const old = document.querySelector('.toast');
+  if(old) old.remove();
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), dur);
+}
+
+// ══════════════════════════════════════════════════════════
+// RENDER: LOGIN
+// ══════════════════════════════════════════════════════════
+function renderLogin() {
+  const apotekers = (state.staffList.filter(s=>s.role==='apoteker'||s.role==='owner').length > 0
+    ? state.staffList.filter(s=>s.role==='apoteker'||s.role==='owner')
+    : [{name:'Apoteker',role:'apoteker'},{name:'Owner',role:'apoteker'}]);
+
+  const kasirs = (state.staffList.filter(s=>s.role==='kasir').length > 0
+    ? state.staffList.filter(s=>s.role==='kasir')
+    : [{name:'Siti Aminah',role:'kasir'},{name:'Budi Santoso',role:'kasir'},{name:'Ani Rahayu',role:'kasir'},{name:'Reza Maulana',role:'kasir'}]);
+
+  return `
+    <div class="login-page">
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="font-size:52px;margin-bottom:10px">💊</div>
+        <div style="font-size:22px;font-weight:800;color:#14532d">${APOTEK_NAME}</div>
+        <div style="color:#6b7280;font-size:13px;margin-top:4px">Pilih nama untuk memulai shift</div>
+      </div>
+
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:14px;padding:14px;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:#15803d;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">💊 Apoteker / Owner</div>
+        ${apotekers.map(s=>`
+          <button class="login-btn" style="border-color:#16a34a;margin-bottom:8px" onclick="selectApoteker('${s.name}')">
+            <div class="login-avatar" style="background:#16a34a;color:white">${s.name[0]}</div>
+            <div style="flex:1;text-align:left">
+              <div>${s.name}</div>
+              <div style="font-size:11px;color:#16a34a;font-weight:600">Dashboard lengkap + Laporan</div>
+            </div>
+            <span style="font-size:16px">🔐</span>
+          </button>
+        `).join('')}
+      </div>
+
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:14px;padding:14px">
+        <div style="font-size:11px;font-weight:700;color:#1d4ed8;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">🛒 Kasir</div>
+        ${kasirs.map(s=>`
+          <button class="login-btn" style="border-color:#bfdbfe;margin-bottom:8px" onclick="selectKasir('${s.name}')">
+            <div class="login-avatar" style="background:#dbeafe;color:#1d4ed8">${s.name[0]}</div>
+            <div style="flex:1;text-align:left">
+              <div>${s.name}</div>
+              <div style="font-size:11px;color:#6b7280;font-weight:600">Input penjualan & restock</div>
+            </div>
+          </button>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderPinModal() {
+  return `
+    <div style="min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:30px 24px;background:#f0fdf4">
+      <div style="font-size:48px;margin-bottom:16px">🔐</div>
+      <div style="font-size:20px;font-weight:800;color:#14532d;margin-bottom:6px">Masukkan PIN</div>
+      <div style="color:#6b7280;font-size:13px;margin-bottom:24px">Halo, ${state.pinTarget}! Masukkan PIN apoteker</div>
+      <div style="display:flex;gap:12px;margin-bottom:24px">
+        ${[0,1,2,3].map(i=>`<div style="width:50px;height:50px;border-radius:14px;background:white;border:2px solid ${state.pinInput.length>i?'#16a34a':'#e5e7eb'};display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:#16a34a">${state.pinInput.length>i?'●':''}</div>`).join('')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;width:240px;margin-bottom:16px">
+        ${[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(n=>`
+          <button ${n===''?'disabled':''} onclick="${n==='⌫'?'pinDelete()':n===''?'void(0)':(`pinInput('${n}')`)}" style="height:60px;border-radius:14px;border:1.5px solid ${n===''?'transparent':'#e5e7eb'};background:${n===''?'transparent':'white'};font-size:20px;font-weight:700;cursor:${n===''?'default':'pointer'};color:#111827;box-shadow:${n===''?'none':'0 2px 6px rgba(0,0,0,.06)'};pointer-events:${n===''?'none':'auto'}">${n}</button>
+        `).join('')}
+      </div>
+      <button onclick="state.pinModal=false;state.pinInput='';render()" style="background:none;border:none;color:#6b7280;font-size:13px;cursor:pointer">← Kembali</button>
+    </div>
+  `;
+}
+
+function bindLogin() {}
+
+function selectKasir(name) {
+  state.staff = name;
+  state.role = 'kasir';
+  state.page = 'kasir';
+  render(); // masuk kasir langsung
+  loadAll(); // data nyusul di background
+}
+
+function selectApoteker(name) {
+  state.pinTarget = name;
+  state.pinInput = '';
+  state.pinModal = true;
+  render();
+}
+
+function pinInput(n) {
+  if(state.pinInput.length >= 4) return;
+  state.pinInput += String(n);  // sudah aman, n selalu string dari onclick
+  if(state.pinInput.length === 4) checkPin();
+  else render();
+}
+
+function pinDelete() {
+  state.pinInput = state.pinInput.slice(0,-1);
+  render();
+}
+
+function checkPin() {
+  const savedPin = localStorage.getItem('apoteker_pin') || '1234';
+  if(state.pinInput === savedPin) {
+    state.staff = state.pinTarget;
+    state.role = 'apoteker';
+    state.pinModal = false;
+    state.pinInput = '';
+    state.page = 'dashboard';
+    render(); // masuk dashboard langsung
+    loadAll(); // data nyusul di background
+  } else {
+    showToast('❌ PIN salah!');
+    state.pinInput = '';
+    render();
+  }
+}
+
+function selectStaff(name) {
+  state.staff = name;
+  state.role = 'kasir';
+  state.page = 'kasir';
+  loadAll();
+}
+
+// ══════════════════════════════════════════════════════════
+// RENDER: NAV
+// ══════════════════════════════════════════════════════════
+function renderNav() {
+  const kasirTabs = [
+    {id:'kasir',icon:'🛒',label:'Kasir'},
+  ];
+  const apotekerTabs = [
+    {id:'dashboard',icon:'📊',label:'Dashboard'},
+    {id:'kasir',icon:'🛒',label:'Kasir'},
+    {id:'admin',icon:'⚙️',label:'Admin'},
+    {id:'settings',icon:'🔧',label:'Settings'},
+  ];
+  const tabs = state.role==='apoteker' ? apotekerTabs : kasirTabs;
+  return `
+    <nav class="nav">
+      <button class="nav-btn" onclick="changePage('login')" title="Keluar">
+        <span>👤</span>
+        <span style="font-size:9px">${state.staff.split(' ')[0]}</span>
+      </button>
+      ${tabs.map(t=>`
+        <button class="nav-btn ${state.page===t.id?'active':''}" onclick="changePage('${t.id}')">
+          <span>${t.icon}</span>
+          <span>${t.label}</span>
+        </button>
+      `).join('')}
+    </nav>
+  `;
+}
+
+// ══════════════════════════════════════════════════════════
+// RENDER: DASHBOARD
+// ══════════════════════════════════════════════════════════
+function renderDashboard() {
+  const criticalCount = state.critical.length;
+  const habisCount = state.drugs.filter(d=>d.stock===0&&d.active!==false).length;
+  const avgTx = state.txCount > 0 ? Math.round(state.revenue/state.txCount) : 0;
+
+  const topHtml = state.topSelling.length > 0 ? state.topSelling.slice(0,5).map((d,i)=>{
+    const colors=['#10b981','#6366f1','#f59e0b','#ec4899','#3b82f6'];
+    const pct = Math.round((d.total_revenue/state.topSelling[0].total_revenue)*100);
+    return `
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:12px;font-weight:600;color:#111827">${i+1}. ${d.drug_name}</span>
+          <span style="font-size:12px;font-weight:700;color:${colors[i]}">${fmtShort(d.total_revenue)}</span>
+        </div>
+        <div class="stock-bar"><div class="stock-fill" style="width:${pct}%;background:${colors[i]}"></div></div>
+      </div>
+    `;
+  }).join('') : '<div class="empty" style="padding:20px 0"><div>Belum ada penjualan hari ini</div></div>';
+
+  const txHtml = state.transactions.length > 0 ? [...state.transactions].slice(0,8).map((t,i)=>`
+    <div class="tx-item">
+      <div>
+        <div style="font-size:12px;font-weight:600;color:#111827">${t.staff_name}</div>
+        <div style="font-size:10px;color:#6b7280">${new Date(t.created_at).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})}</div>
+      </div>
+      <div style="font-size:12px;font-weight:700;color:#16a34a">+${fmt(t.total)}</div>
+    </div>
+  `).join('') : '<div style="text-align:center;color:#9ca3af;font-size:12px;padding:16px 0">Belum ada transaksi</div>';
+
+  const critHtml = state.critical.length > 0 ? state.critical.map(d=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15);border-radius:10px;margin-bottom:6px">
+      <span>${d.stock===0?'🔴':'🟡'}</span>
+      <div style="flex:1">
+        <div style="font-size:11px;font-weight:700;color:#111827">${d.name}</div>
+        <div class="stock-bar"><div class="stock-fill" style="width:${Math.min(100,Math.round(d.stock/d.min_stock*100))}%;background:${d.stock===0?'#ef4444':'#f59e0b'}"></div></div>
+      </div>
+      <span style="font-size:11px;font-weight:700;color:${d.stock===0?'#ef4444':'#f59e0b'}">${d.stock===0?'HABIS':`${d.stock}/${d.min_stock}`}</span>
+    </div>
+  `).join('') : '<div style="text-align:center;color:#16a34a;font-size:12px;font-weight:600;padding:8px 0">✓ Semua stok aman</div>';
+
+  return `
+    <div style="background:linear-gradient(135deg,#15803d,#16a34a);padding:16px;color:white">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div style="font-size:11px;opacity:.7;font-weight:600;letter-spacing:1px;text-transform:uppercase">Owner Dashboard</div>
+          <div style="font-size:20px;font-weight:800;margin-top:2px">${APOTEK_NAME} 💊</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:10px;opacity:.7"><span class="live-dot"></span>${state.lastUpdate}</div>
+          <button onclick="loadAll()" style="margin-top:6px;background:rgba(255,255,255,.2);border:none;border-radius:8px;padding:4px 10px;color:white;font-size:11px;cursor:pointer">🔄 Refresh</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-icon">💰</div><div class="kpi-val">${fmtShort(state.revenue)}</div><div class="kpi-label">Revenue Hari Ini</div><div class="kpi-sub" style="color:#16a34a">${state.txCount} transaksi</div></div>
+      <div class="kpi"><div class="kpi-icon">🛒</div><div class="kpi-val">${fmtShort(avgTx)}</div><div class="kpi-label">Avg/Transaksi</div></div>
+      <div class="kpi"><div class="kpi-icon">⚠️</div><div class="kpi-val" style="color:#f59e0b">${criticalCount}</div><div class="kpi-label">Stok Kritis</div></div>
+      <div class="kpi"><div class="kpi-icon">🔴</div><div class="kpi-val" style="color:#ef4444">${habisCount}</div><div class="kpi-label">Stok Habis</div></div>
+    </div>
+
+    <div style="padding:0 14px">
+      <div class="card">
+        <div style="font-weight:700;font-size:14px;color:#111827;margin-bottom:10px">📈 Revenue per Jam</div>
+        <div class="chart-wrap"><canvas id="revenueChart"></canvas></div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:700;font-size:14px;color:#111827;margin-bottom:12px">🏆 Top Penjualan</div>
+        ${topHtml}
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-weight:700;font-size:14px;color:#111827">⚡ Transaksi Terbaru</div>
+          <span class="live-dot"></span>
+        </div>
+        ${txHtml}
+      </div>
+
+      <div class="card">
+        <div style="font-weight:700;font-size:14px;color:#111827;margin-bottom:10px">🚨 Status Stok</div>
+        ${critHtml}
+      </div>
+
+      <div class="card">
+        <div style="font-weight:700;font-size:14px;color:#111827;margin-bottom:12px">👥 Penjualan per Staff</div>
+        ${renderStaffSales()}
+      </div>
+
+      ${state.role==='apoteker' ? `
+      <div class="card" style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border-color:#86efac">
+        <div style="font-weight:800;font-size:14px;color:#14532d;margin-bottom:6px">📋 Ringkasan Apoteker</div>
+        <div style="font-size:12px;color:#15803d;line-height:2">
+          <div>💰 Total revenue: <strong>${fmt(state.revenue)}</strong></div>
+          <div>🛒 Total transaksi: <strong>${state.txCount}x</strong></div>
+          <div>📦 Obat kritis: <strong>${state.critical.length} item</strong></div>
+          <div>👥 Staff bertugas: <strong>${[...new Set(state.transactions.map(t=>t.staff_name))].length} orang</strong></div>
+          <div>⏰ Update: <strong>${state.lastUpdate}</strong></div>
+        </div>
+      </div>
+      ` : ''}
+
+    </div>
+  `;
+}
+
+function renderStaffSales() {
+  if(state.transactions.length === 0) return '<div style="text-align:center;color:#9ca3af;font-size:12px;padding:10px 0">Belum ada transaksi hari ini</div>';
+  
+  const byStaff = state.transactions.reduce((acc,t)=>{
+    if(!acc[t.staff_name]) acc[t.staff_name] = {name:t.staff_name, total:0, count:0};
+    acc[t.staff_name].total += t.total||0;
+    acc[t.staff_name].count++;
+    return acc;
+  },{});
+
+  const sorted = Object.values(byStaff).sort((a,b)=>b.total-a.total);
+  const maxTotal = sorted[0]?.total||1;
+
+  return sorted.map((s,i)=>{
+    const pct = Math.round((s.total/maxTotal)*100);
+    const colors = ['#16a34a','#2563eb','#7c3aed','#d97706','#dc2626'];
+    return `
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:13px;font-weight:700;color:#111827">👤 ${s.name}</span>
+          <span style="font-size:12px;font-weight:700;color:${colors[i%5]}">${fmtShort(s.total)}</span>
+        </div>
+        <div style="height:5px;background:#f3f4f6;border-radius:3px">
+          <div style="width:${pct}%;height:100%;background:${colors[i%5]};border-radius:3px;transition:width .6s"></div>
+        </div>
+        <div style="font-size:10px;color:#9ca3af;margin-top:2px">${s.count} transaksi</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function _closeDashboard_placeholder() {}
+
+function initChart() {
+  const canvas = document.getElementById('revenueChart');
+  if(!canvas) return;
+  if(state.chart) { state.chart.destroy(); state.chart = null; }
+  const hours = Array.from({length:new Date().getHours()+1},(_,h)=>{
+    const f = state.hourlyData.find(d=>parseInt(d.hour)===h);
+    return {hour:`${String(h).padStart(2,'0')}:00`, rev: f?.revenue||0};
+  }).filter(h=>parseInt(h.hour)>=0);
+
+  state.chart = new Chart(canvas, {
+    type:'bar',
+    data:{
+      labels: hours.map(h=>h.hour),
+      datasets:[{
+        data: hours.map(h=>h.rev),
+        backgroundColor: hours.map((_,i)=>i===hours.length-1?'#16a34a':'rgba(22,163,74,.3)'),
+        borderRadius:4
+      }]
+    },
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:'#9ca3af'}},y:{display:false,grid:{display:false}}}}
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+// RENDER: KASIR
+// ══════════════════════════════════════════════════════════
+function renderKasir() {
+  if(state.mode==='jual') return renderJual();
+  return renderRestock();
+}
+
+function renderJual() {
+  const cats = ['Semua',...new Set(state.drugs.map(d=>d.category))];
+  const filtered = state.drugs.filter(d=>{
+    if(d.active===false) return false;
+    if(state.catFilter!=='Semua'&&d.category!==state.catFilter) return false;
+    if(state.search&&!d.name.toLowerCase().includes(state.search.toLowerCase())) return false;
+    return true;
+  });
+  const cartTotal = state.cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const cartCount = state.cart.reduce((s,i)=>s+i.qty,0);
+
+  const drugsHtml = filtered.map(drug=>{
+    const inCart = state.cart.find(i=>i.id===drug.id);
+    const isHabis = drug.stock===0;
+    const isKritis = drug.stock<drug.min_stock&&!isHabis;
+    return `
+      <div class="drug-card ${inCart?'in-cart':''} ${isHabis?'habis':''}" onclick="${isHabis?'':`addToCart(${drug.id})`}">
+        ${inCart?`<div class="cart-badge">${inCart.qty}</div>`:''}
+        ${isKritis&&!isHabis?'<div class="kritis-badge">KRITIS</div>':''}
+        <div style="font-size:26px;margin-bottom:6px">${drug.emoji||'💊'}</div>
+        <div style="font-size:11px;font-weight:700;color:#111827;line-height:1.3;margin-bottom:4px">${drug.name}</div>
+        <div style="font-size:13px;font-weight:800;color:#16a34a;margin-bottom:2px">${fmt(drug.price)}</div>
+        <div style="font-size:10px;color:${isHabis?'#ef4444':isKritis?'#f59e0b':'#9ca3af'};font-weight:600">${isHabis?'🔴 Habis':`${drug.stock} ${drug.unit}${drug.unit_large&&drug.unit_conversion>1?" (~"+Math.floor(drug.stock/drug.unit_conversion)+" "+drug.unit_large+")":""}`}</div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div style="background:linear-gradient(135deg,#15803d,#16a34a);padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div>
+          <div style="color:rgba(255,255,255,.7);font-size:11px;font-weight:600">Mode Kasir 🛒</div>
+          <div style="color:white;font-size:15px;font-weight:800">👤 ${state.staff}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${cartCount>0?`<button onclick="openCart()" style="background:white;border:none;border-radius:12px;padding:7px 12px;cursor:pointer;display:flex;align-items:center;gap:6px;font-weight:700;font-size:12px;color:#15803d">🛒 ${cartCount} <span style="background:#15803d;color:white;border-radius:6px;padding:1px 7px;font-size:11px">${fmt(cartTotal)}</span></button>`:''}
+          <button onclick="changePage('login')" style="background:rgba(255,255,255,.2);border:none;border-radius:10px;padding:7px 12px;color:white;cursor:pointer;font-size:12px;font-weight:600">Ganti</button>
+        </div>
+      </div>
+      <div class="mode-toggle">
+        <button class="mode-btn active" onclick="setMode('jual')">📤 Jual</button>
+        <button class="mode-btn" onclick="setMode('restock')">📥 Restock</button>
+      </div>
+    </div>
+    <div class="search-bar">
+      <input placeholder="🔍 Cari obat..." value="${state.search}" oninput="state.search=this.value;render()"/>
+      <div class="cat-scroll">
+        ${cats.map(c=>`<button class="cat-btn ${state.catFilter===c?'active':''}" onclick="state.catFilter='${c}';render()">${c}</button>`).join('')}
+      </div>
+    </div>
+    <div class="drug-grid">${drugsHtml}</div>
+    ${cartCount>0?`<div class="cart-fab"><button onclick="openCart()"><span>🛒 ${cartCount} item</span><span>${fmt(cartTotal)}</span></button></div>`:''}
+  `;
+}
+
+function renderRestock() {
+  const filtered = state.drugs.filter(d=>d.active!==false&&d.name.toLowerCase().includes(state.restockSearch.toLowerCase()));
+  const drugsHtml = state.restockSearch ? filtered.map(drug=>{
+    const isAdded = state.restockItems.find(i=>i.drugId===drug.id);
+    return `
+      <div onclick="${isAdded?'':`addRestockItem(${drug.id})`}" style="padding:12px 14px;border-radius:12px;border:1.5px solid ${isAdded?'#bfdbfe':'#e5e7eb'};background:${isAdded?'#eff6ff':'white'};cursor:${isAdded?'default':'pointer'};display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;opacity:${isAdded?.65:1}">
+        <div>
+          <div style="font-weight:700;font-size:13px;color:#111827">${drug.name}</div>
+          <div style="font-size:11px;color:#6b7280">Stok: ${drug.stock} ${drug.unit}${drug.unit_large&&drug.unit_conversion>1?" (~"+Math.floor(drug.stock/drug.unit_conversion)+" "+drug.unit_large+")":""}</div>
+        </div>
+        <span style="font-size:20px;color:${isAdded?'#93c5fd':'#d1d5db'}">${isAdded?'✓':'+'}</span>
+      </div>
+    `;
+  }).join('') : '';
+
+  const restockItemsHtml = state.restockItems.map(item=>{
+    const drug = state.drugs.find(d=>d.id===item.drugId);
+    const hasConversion = drug?.unit_large && drug?.unit_conversion > 1;
+    const totalSmall = hasConversion && item.useBox ? item.qty * drug.unit_conversion : item.qty;
+    return `
+    <div style="background:white;border-radius:14px;padding:14px;border:1.5px solid #bfdbfe;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+        <div>
+          <div style="font-weight:700;font-size:14px">${item.drugName}</div>
+          <div style="font-size:11px;color:#6b7280">Stok saat ini: ${drug?.stock||0} ${drug?.unit||''}</div>
+        </div>
+        <button onclick="removeRestockItem(${item.drugId})" style="background:#fee2e2;border:none;border-radius:8px;padding:4px 10px;color:#dc2626;font-size:12px;font-weight:700;cursor:pointer">✕</button>
+      </div>
+      ${hasConversion ? `
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <button onclick="updateRestockUnit(${item.drugId},false)" style="flex:1;padding:7px;border-radius:9px;border:2px solid ${!item.useBox?'#2563eb':'#e5e7eb'};background:${!item.useBox?'#eff6ff':'white'};font-size:12px;font-weight:700;cursor:pointer;color:${!item.useBox?'#1d4ed8':'#6b7280'}">Per ${drug.unit}</button>
+        <button onclick="updateRestockUnit(${item.drugId},true)" style="flex:1;padding:7px;border-radius:9px;border:2px solid ${item.useBox?'#2563eb':'#e5e7eb'};background:${item.useBox?'#eff6ff':'white'};font-size:12px;font-weight:700;cursor:pointer;color:${item.useBox?'#1d4ed8':'#6b7280'}">Per ${drug.unit_large}</button>
+      </div>
+      ` : ''}
+      <div style="margin-bottom:10px">
+        <label class="form-label">Jumlah ${item.useBox&&hasConversion?`(${drug.unit_large})`:drug?.unit||''} *</label>
+        <div style="display:flex;align-items:center;gap:12px">
+          <button onclick="updateRestockQty(${item.drugId},-1)" style="width:38px;height:38px;border-radius:10px;border:1.5px solid #e5e7eb;background:white;font-size:20px;cursor:pointer;font-weight:700">−</button>
+          <input type="number" min="1" value="${item.qty}" onchange="updateRestockQtyVal(${item.drugId},this.value)" style="width:70px;text-align:center;font-size:18px;font-weight:800;color:#1d4ed8;border-color:#bfdbfe"/>
+          <button onclick="updateRestockQty(${item.drugId},1)" style="width:38px;height:38px;border-radius:10px;border:none;background:#2563eb;font-size:20px;cursor:pointer;font-weight:700;color:white">+</button>
+        </div>
+        ${hasConversion&&item.useBox?`<div style="font-size:11px;color:#16a34a;font-weight:700;margin-top:6px">= ${totalSmall} ${drug.unit} akan ditambahkan</div>`:''}
+      </div>
+      <label class="form-label">Supplier *</label>
+      <select onchange="updateRestockSupplier(${item.drugId},this.value)">
+        <option value="">-- Pilih supplier --</option>
+        ${SUPPLIERS.map(s=>`<option value="${s}" ${item.supplier===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+    </div>
+  `}).join('');
+
+  return `
+    <div style="background:linear-gradient(135deg,#1d4ed8,#2563eb);padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div>
+          <div style="color:rgba(255,255,255,.7);font-size:11px;font-weight:600">Mode Restock 📥</div>
+          <div style="color:white;font-size:15px;font-weight:800">👤 ${state.staff}</div>
+        </div>
+        <button onclick="changePage('login')" style="background:rgba(255,255,255,.2);border:none;border-radius:10px;padding:7px 12px;color:white;cursor:pointer;font-size:12px;font-weight:600">Ganti</button>
+      </div>
+      <div class="mode-toggle">
+        <button class="mode-btn" onclick="setMode('jual')">📤 Jual</button>
+        <button class="mode-btn active" onclick="setMode('restock')">📥 Restock</button>
+      </div>
+    </div>
+    <div style="padding:12px 14px;background:white;border-bottom:1px solid #f3f4f6">
+      <input placeholder="🔍 Cari obat untuk di-restock..." value="${state.restockSearch}" oninput="state.restockSearch=this.value;render()" style="border-color:#bfdbfe;background:#eff6ff"/>
+    </div>
+    <div style="padding:10px 14px">${drugsHtml}</div>
+    ${state.restockItems.length>0?`
+      <div style="padding:0 14px">
+        <div style="font-weight:800;font-size:14px;color:#1d4ed8;margin-bottom:12px">📥 Daftar Restock (${state.restockItems.length})</div>
+        ${restockItemsHtml}
+        <button class="btn btn-blue" onclick="confirmRestock()" style="margin-top:10px">📥 Submit Restock</button>
+      </div>
+    `:''}
+    ${state.restockItems.length===0&&!state.restockSearch?`
+      <div class="empty"><div class="empty-icon">📦</div><div>Cari obat di atas untuk mulai restock</div></div>
+    `:''}
+  `;
+}
+
+// ══════════════════════════════════════════════════════════
+// RENDER: ADMIN
+// ══════════════════════════════════════════════════════════
+function renderAdmin() {
+  const totalActive = state.drugs.filter(d=>d.active!==false).length;
+  const totalKritis = state.drugs.filter(d=>d.active!==false&&d.stock<d.min_stock).length;
+
+  const filtered = state.drugs.filter(d=>{
+    const ms = d.name.toLowerCase().includes(state.adminSearch.toLowerCase())||d.supplier?.toLowerCase().includes(state.adminSearch.toLowerCase());
+    const mc = state.adminCat==='Semua'||d.category===state.adminCat;
+    const mst = state.adminStatus==='Semua'||(state.adminStatus==='Aktif'?d.active!==false:d.active===false);
+    return ms&&mc&&mst;
+  });
+
+  const drugsHtml = filtered.map(drug=>{
+    const isActive = drug.active!==false;
+    const isKritis = isActive&&drug.stock<drug.min_stock;
+    const isHabis = drug.stock===0;
+    const margin = drug.price&&drug.buy_price?Math.round(((drug.price-drug.buy_price)/drug.price)*100):0;
+    return `
+      <div style="background:white;border-radius:14px;padding:13px 14px;border:1.5px solid ${!isActive?'#f3f4f6':isHabis?'#fecaca':isKritis?'#fde68a':'#ede9fe'};margin-bottom:8px;opacity:${isActive?1:.55}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:13px;color:#111827">${drug.emoji||'💊'} ${drug.name} ${!isActive?'<span class="badge badge-gray" style="font-size:10px">Nonaktif</span>':''}</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:2px">${drug.category} • ${drug.supplier||'-'}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button onclick="editDrug(${drug.id})" style="background:#ede9fe;border:none;border-radius:8px;padding:5px 10px;color:#7c3aed;font-size:11px;font-weight:700;cursor:pointer">✏️</button>
+            <button onclick="toggleDrug(${drug.id})" style="background:${isActive?'#fee2e2':'#dcfce7'};border:none;border-radius:8px;padding:5px 10px;color:${isActive?'#dc2626':'#16a34a'};font-size:11px;font-weight:700;cursor:pointer">${isActive?'🔴':'🟢'}</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <span class="badge ${isHabis?'badge-red':isKritis?'badge-yellow':'badge-green'}">📦 ${drug.stock}/${drug.min_stock} ${drug.unit}</span>
+          <span class="badge badge-blue">💰 ${fmt(drug.price)}</span>
+          ${margin>0?`<span class="badge ${margin>20?'badge-green':'badge-yellow'}">📊 ${margin}%</span>`:''}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const cats = ['Semua',...new Set(state.drugs.map(d=>d.category))];
+
+  return `
+    <div style="background:linear-gradient(135deg,#6d28d9,#7c3aed,#8b5cf6);padding:16px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+        <div>
+          <div style="color:#ddd6fe;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase">Admin Panel</div>
+          <div style="color:white;font-size:18px;font-weight:800">💊 Master Obat</div>
+        </div>
+        <button onclick="openAddDrug()" style="background:white;border:none;border-radius:10px;padding:8px 14px;color:#7c3aed;font-size:12px;font-weight:800;cursor:pointer">➕ Tambah</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div style="background:rgba(255,255,255,.1);border-radius:10px;padding:8px;text-align:center"><div style="color:#a78bfa;font-weight:800;font-size:18px">${totalActive}</div><div style="color:rgba(255,255,255,.6);font-size:9px;font-weight:600">Aktif</div></div>
+        <div style="background:rgba(255,255,255,.1);border-radius:10px;padding:8px;text-align:center"><div style="color:#fcd34d;font-weight:800;font-size:18px">${totalKritis}</div><div style="color:rgba(255,255,255,.6);font-size:9px;font-weight:600">Kritis</div></div>
+        <div style="background:rgba(255,255,255,.1);border-radius:10px;padding:8px;text-align:center"><div style="color:#f9a8d4;font-weight:800;font-size:18px">${state.drugs.length}</div><div style="color:rgba(255,255,255,.6);font-size:9px;font-weight:600">Total</div></div>
+      </div>
+    </div>
+    <div style="padding:12px 14px;background:white;border-bottom:1px solid #f3f4f6;position:sticky;top:0;z-index:10">
+      <input placeholder="🔍 Cari obat atau supplier..." value="${state.adminSearch}" oninput="state.adminSearch=this.value;render()" style="margin-bottom:10px;border-color:#ede9fe;background:#faf5ff"/>
+      <div class="cat-scroll">
+        ${['Semua','Aktif','Nonaktif'].map(s=>`<button class="cat-btn ${state.adminStatus===s?'active':''}" onclick="state.adminStatus='${s}';render()" style="${state.adminStatus===s?'background:#7c3aed':'background:#f3f4f6;color:#6b7280'}">${s}</button>`).join('')}
+        <div style="width:1px;background:#e5e7eb;flex-shrink:0;margin:0 4px"></div>
+        ${cats.slice(0,5).map(c=>`<button class="cat-btn ${state.adminCat===c?'active':''}" onclick="state.adminCat='${c}';render()" style="${state.adminCat===c?'background:#ede9fe;color:#6d28d9':'background:#f3f4f6;color:#6b7280'}">${c}</button>`).join('')}
+      </div>
+    </div>
+    <div style="padding:10px 14px">
+      <div style="font-size:12px;color:#9ca3af;font-weight:600;margin-bottom:8px">Menampilkan ${filtered.length} dari ${state.drugs.length} obat</div>
+      ${drugsHtml}
+      ${filtered.length===0?'<div class="empty"><div class="empty-icon">🔍</div><div>Tidak ditemukan</div></div>':''}
+    </div>
+  `;
+}
+
+// ══════════════════════════════════════════════════════════
+// RENDER: MODAL
+// ══════════════════════════════════════════════════════════
+function renderModal() {
+  if(state.modal==='cart') return renderCartModal();
+  if(state.modal==='drug') return renderDrugModal();
+  return '';
+}
+
+function renderCartModal() {
+  const cart = state.cart;
+  const total = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const itemsHtml = cart.map(item=>{
+    const drug = state.drugs.find(d=>d.id===item.id);
+    const maxStock = drug?.stock||0;
+    return `
+      <div style="background:white;border-radius:14px;padding:13px;box-shadow:0 2px 8px rgba(0,0,0,.05);border:1px solid #f3f4f6;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+          <div>
+            <div style="font-weight:700;font-size:13px">${item.name}</div>
+            <div style="color:#16a34a;font-size:13px;font-weight:700">${fmt(item.price)}/${item.unit}</div>
+          </div>
+          <div style="font-weight:800;font-size:14px">${fmt(item.price*item.qty)}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;justify-content:center">
+          <button onclick="updateCartQty(${item.id},-1)" style="width:42px;height:42px;border-radius:11px;border:2px solid #e5e7eb;background:white;font-size:20px;font-weight:700;cursor:pointer;color:#374151">−</button>
+          <div style="min-width:50px;text-align:center"><div style="font-size:22px;font-weight:800">${item.qty}</div><div style="font-size:10px;color:#9ca3af">max ${maxStock+item.qty}</div></div>
+          <button onclick="updateCartQty(${item.id},1)" ${item.qty>=maxStock+item.qty?'disabled':''} style="width:42px;height:42px;border-radius:11px;border:none;background:${item.qty>=maxStock+item.qty?'#f3f4f6':'#16a34a'};font-size:20px;font-weight:700;cursor:pointer;color:white">+</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <div class="modal-header">
+          <div class="modal-title">🛒 Review Transaksi</div>
+          <button class="modal-close" onclick="closeModal()">✕</button>
+        </div>
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between">
+          <span style="font-size:13px;color:#15803d;font-weight:600">👤 ${state.staff}</span>
+          <span style="font-size:13px;color:#6b7280">${new Date().toLocaleDateString('id-ID',{day:'numeric',month:'short'})}</span>
+        </div>
+        ${itemsHtml}
+        <div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1px solid #86efac;border-radius:14px;padding:16px 18px;margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-weight:800;font-size:17px;color:#14532d">TOTAL</span>
+            <span style="font-weight:800;font-size:22px;color:#15803d">${fmt(total)}</span>
+          </div>
+        </div>
+        <button class="btn btn-green" onclick="confirmSale()">✅ Proses Penjualan</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderDrugModal() {
+  const d = state.editDrug || {};
+  const isEdit = !!d.id;
+  return `
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <div class="modal-header">
+          <div class="modal-title">${isEdit?'✏️ Edit Obat':'➕ Tambah Obat Baru'}</div>
+          <button class="modal-close" onclick="closeModal()">✕</button>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Nama Obat *</label>
+          <input id="f-name" value="${d.name||''}" placeholder="e.g. Amoxicillin 500mg"/>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Kategori</label>
+            <select id="f-cat">${CATEGORIES_LIST.map(c=>`<option value="${c}" ${d.category===c?'selected':''}>${c}</option>`).join('')}</select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Satuan Jual (kecil)</label>
+            <select id="f-unit">${UNITS.map(u=>`<option value="${u}" ${d.unit===u?'selected':''}>${u}</option>`).join('')}</select>
+          </div>
+        </div>
+        <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:12px;margin-bottom:12px">
+          <div style="font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:10px">📦 Konversi Satuan (opsional)</div>
+          <div class="form-row">
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Satuan Besar</label>
+              <select id="f-unit-large">
+                <option value="">-- Tidak ada --</option>
+                ${UNITS_LARGE.map(u=>`<option value="${u}" ${(d.unit_large||'')=== u?'selected':''}>${u}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Isi per Satuan Besar</label>
+              <input id="f-conversion" type="number" min="1" value="${d.unit_conversion||''}" placeholder="cth: 12"/>
+            </div>
+          </div>
+          <div style="font-size:11px;color:#6b7280;margin-top:8px">Contoh: 1 box = 12 strip → satuan besar: box, isi: 12</div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Harga Beli (Rp)</label>
+            <input id="f-buy" type="number" value="${d.buy_price||''}" placeholder="0"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Harga Jual (Rp) *</label>
+            <input id="f-price" type="number" value="${d.price||''}" placeholder="0"/>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Stok Awal</label>
+            <input id="f-stock" type="number" value="${d.stock||0}"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Stok Minimum</label>
+            <input id="f-minstock" type="number" value="${d.min_stock||10}"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Supplier</label>
+          <select id="f-supplier">${SUPPLIERS.map(s=>`<option value="${s}" ${d.supplier===s?'selected':''}>${s}</option>`).join('')}</select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Expired</label>
+          <input id="f-expiry" type="date" value="${d.expiry_date||''}"/>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:16px">
+          <button class="btn btn-outline" onclick="closeModal()">Batal</button>
+          <button class="btn btn-purple" onclick="saveDrug(${isEdit?d.id:'null'})" style="flex:2">${isEdit?'💾 Update':'💾 Simpan'}</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ══════════════════════════════════════════════════════════
+// ACTIONS
+// ══════════════════════════════════════════════════════════
+function bindEvents() {}
+
+function changePage(page) {
+  if(page==='login') { state.page='login'; state.staff=''; render(); return; }
+  state.page = page;
+  state.modal = null;
+  render();
+}
+
+function setMode(mode) {
+  state.mode = mode;
+  state.cart = [];
+  state.restockItems = [];
+  state.restockSearch = '';
+  render();
+}
+
+function openCart() { state.modal='cart'; render(); }
+function closeModal() { state.modal=null; render(); }
+
+function addToCart(id) {
+  const drug = state.drugs.find(d=>d.id===id);
+  if(!drug||drug.stock===0) return;
+  const ex = state.cart.find(i=>i.id===id);
+  if(ex) {
+    if(ex.qty>=drug.stock) return;
+    state.cart = state.cart.map(i=>i.id===id?{...i,qty:i.qty+1}:i);
+  } else {
+    state.cart.push({...drug,qty:1});
+  }
+  render();
+}
+
+function updateCartQty(id,delta) {
+  state.cart = state.cart.map(i=>i.id===id?{...i,qty:Math.max(0,i.qty+delta)}:i).filter(i=>i.qty>0);
+  render();
+}
+
+async function confirmSale() {
+  if(state.cart.length===0) return;
+  const btn = document.querySelector('.modal button.btn-green');
+  if(btn) { btn.disabled=true; btn.textContent='⏳ Menyimpan...'; }
+
+  try {
+    const total = state.cart.reduce((s,i)=>s+i.price*i.qty,0);
+    const {data:tx,error:txErr} = await db.from('transactions').insert({staff_name:state.staff,total}).select().single();
+    if(txErr) throw txErr;
+
+    const items = state.cart.map(i=>({
+      transaction_id:tx.id, drug_id:i.id, drug_name:i.name,
+      qty:i.qty, price_per_unit:i.price, subtotal:i.price*i.qty
+    }));
+    const {error:itemErr} = await db.from('transaction_items').insert(items);
+    if(itemErr) throw itemErr;
+
+    state.cart = [];
+    state.modal = null;
+    showToast(`✅ Transaksi ${tx.tx_code} berhasil!`);
+    await loadAll();
+  } catch(e) {
+    showToast('❌ Gagal: '+e.message);
+    if(btn) { btn.disabled=false; btn.textContent='✅ Proses Penjualan'; }
+  }
+}
+
+function addRestockItem(id) {
+  const drug = state.drugs.find(d=>d.id===id);
+  if(!drug||state.restockItems.find(i=>i.drugId===id)) return;
+  state.restockItems.push({drugId:id,drugName:drug.name,unit:drug.unit,qty:1,supplier:'',useBox:!!(drug.unit_large&&drug.unit_conversion>1)});
+  render();
+}
+
+function removeRestockItem(id) { state.restockItems = state.restockItems.filter(i=>i.drugId!==id); render(); }
+
+function updateRestockQty(id,delta) {
+  state.restockItems = state.restockItems.map(i=>i.drugId===id?{...i,qty:Math.max(1,(i.qty||1)+delta)}:i);
+  render();
+}
+
+function updateRestockQtyVal(id,val) {
+  state.restockItems = state.restockItems.map(i=>i.drugId===id?{...i,qty:parseInt(val)||1}:i);
+}
+
+function updateRestockSupplier(id,val) {
+  state.restockItems = state.restockItems.map(i=>i.drugId===id?{...i,supplier:val}:i);
+}
+
+function updateRestockUnit(id,useBox) {
+  state.restockItems = state.restockItems.map(i=>i.drugId===id?{...i,useBox,qty:1}:i);
+  render();
+}
+
+async function confirmRestock() {
+  const incomplete = state.restockItems.find(i=>!i.supplier);
+  if(incomplete) { showToast(`⚠️ Pilih supplier untuk ${incomplete.drugName}`); return; }
+
+  try {
+    for(const item of state.restockItems) {
+      const drugData = state.drugs.find(d=>d.id===item.drugId);
+      const conversion = (item.useBox && drugData && drugData.unit_conversion > 1) ? drugData.unit_conversion : 1;
+      const qtySmall = item.qty * conversion;
+      const {data:drug} = await db.from('drugs').select('stock').eq('id',item.drugId).single();
+      await db.from('stock_logs').insert({drug_id:item.drugId,drug_name:item.drugName,type:'restock',qty_change:qtySmall,stock_before:drug.stock,stock_after:drug.stock+qtySmall,staff_name:state.staff});
+      await db.from('drugs').update({stock:drug.stock+qtySmall}).eq('id',item.drugId);
+    }
+    state.restockItems = [];
+    state.restockSearch = '';
+    showToast('✅ Restock berhasil disimpan!');
+    await loadAll();
+  } catch(e) { showToast('❌ Error: '+(e?.message||e?.details||JSON.stringify(e))); }
+}
+
+function openAddDrug() { state.editDrug=null; state.modal='drug'; render(); }
+
+function editDrug(id) {
+  state.editDrug = state.drugs.find(d=>d.id===id);
+  state.modal = 'drug';
+  render();
+}
+
+async function toggleDrug(id) {
+  const drug = state.drugs.find(d=>d.id===id);
+  const newActive = drug.active===false ? true : false;
+  await db.from('drugs').update({active:newActive}).eq('id',id);
+  showToast(`${newActive?'🟢 Diaktifkan':'🔴 Dinonaktifkan'}: ${drug.name}`);
+  await loadDrugs();
+  render();
+}
+
+async function saveDrug(id) {
+  const name = document.getElementById('f-name')?.value?.trim();
+  const price = parseInt(document.getElementById('f-price')?.value)||0;
+  if(!name) { showToast('⚠️ Nama obat wajib diisi!'); return; }
+  if(!price) { showToast('⚠️ Harga jual wajib diisi!'); return; }
+
+  const unitLarge = document.getElementById('f-unit-large')?.value||null;
+  const conversion = parseInt(document.getElementById('f-conversion')?.value)||1;
+  const data = {
+    name,
+    category: document.getElementById('f-cat')?.value,
+    unit: document.getElementById('f-unit')?.value,
+    unit_large: unitLarge||null,
+    unit_conversion: unitLarge ? conversion : 1,
+    buy_price: parseInt(document.getElementById('f-buy')?.value)||0,
+    price,
+    stock: parseInt(document.getElementById('f-stock')?.value)||0,
+    min_stock: parseInt(document.getElementById('f-minstock')?.value)||10,
+    supplier: document.getElementById('f-supplier')?.value,
+    expiry_date: document.getElementById('f-expiry')?.value||null,
+    emoji: '💊',
+    active: true
+  };
+
+  try {
+    if(id&&id!=='null') {
+      const {error:updErr} = await db.from('drugs').update(data).eq('id',id); if(updErr) throw updErr;
+      showToast(`✅ ${name} diperbarui!`);
+    } else {
+      const {data:insData, error:insErr} = await db.from('drugs').insert(data); if(insErr) throw insErr;
+      showToast(`✅ ${name} ditambahkan!`);
+    }
+    state.modal = null;
+    await loadDrugs();
+    render();
+  } catch(e) { showToast('❌ Error: '+(e?.message||e?.details||JSON.stringify(e))); }
+}
+
+// ══════════════════════════════════════════════════════════
+// DATA LOADING
+// ══════════════════════════════════════════════════════════
+async function loadDrugs() {
+  const {data} = await db.from('drugs').select('*').order('name');
+  state.drugs = data||[];
+}
+
+async function loadAll() {
+  // Render dulu pakai data yg sudah ada (instant)
+  state.loading = false;
+  render();
+
+  const todayStr = today();
+  try {
+    const [drugsRes, txRes, critRes, hourlyRes, topRes, staffRes] = await Promise.all([
+      db.from('drugs').select('*').order('name'),
+      db.from('transactions').select('*').gte('created_at',`${todayStr}T00:00:00`).order('created_at',{ascending:false}),
+      db.from('critical_stock').select('*'),
+      db.from('hourly_revenue_today').select('*'),
+      db.from('top_selling_today').select('*'),
+      db.from('staff').select('*').eq('is_active',true).order('name'),
+    ]);
+    state.drugs        = drugsRes.data||[];
+    state.transactions = txRes.data||[];
+    state.critical     = critRes.data||[];
+    state.hourlyData   = hourlyRes.data||[];
+    state.topSelling   = topRes.data||[];
+    state.staffList    = staffRes.data||state.staffList||[];
+    state.revenue      = state.transactions.reduce((s,t)=>s+(t.total||0),0);
+    state.txCount      = state.transactions.length;
+    state.lastUpdate   = nowTime();
+  } catch(e) {
+    console.error('loadAll error:', e);
+  }
+  render(); // re-render setelah data masuk
+
+  // Realtime
+  try { db.channel('pharmstock-live')
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'transactions'},()=>loadAll())
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'drugs'},()=>{loadDrugs();render();})
+    .subscribe();
+  } catch(e) { console.warn('Realtime error:', e); }
+}
+
+// ══════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════
+function renderSettings() {
+  return `
+    <div style="background:linear-gradient(135deg,#0f766e,#0d9488);padding:16px;color:white">
+      <div style="font-size:11px;opacity:.7;font-weight:600;letter-spacing:1px;text-transform:uppercase">Pengaturan</div>
+      <div style="font-size:20px;font-weight:800;margin-top:2px">🔧 Settings</div>
+    </div>
+    <div style="padding:16px">
+
+      <div class="card">
+        <div style="font-weight:800;font-size:14px;color:#111827;margin-bottom:14px">🏥 Identitas Apotek</div>
+        <div class="form-group">
+          <label class="form-label">Nama Apotek</label>
+          <input id="s-name" value="${APOTEK_NAME}" placeholder="Nama apotek..."/>
+        </div>
+        <button class="btn btn-green" onclick="saveSettings()">💾 Simpan Nama Apotek</button>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:800;font-size:14px;color:#111827;margin-bottom:14px">👥 Info Sistem</div>
+        <div style="font-size:13px;color:#6b7280;line-height:1.8">
+          <div>🗄️ Database: Supabase (Real-time)</div>
+          <div>📊 Versi: PharmStock AI v1.0</div>
+          <div>💊 Total Obat: ${state.drugs.length}</div>
+          <div>👤 Staff aktif: ${state.staffList.length}</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:800;font-size:14px;color:#111827;margin-bottom:14px">🔐 Ganti PIN Apoteker</div>
+        <div style="font-size:12px;color:#6b7280;margin-bottom:12px">PIN untuk login Apoteker/Owner. Default: <strong>1234</strong></div>
+        <div class="form-group">
+          <label class="form-label">PIN Baru (4 digit)</label>
+          <input id="s-pin" type="password" maxlength="4" inputmode="numeric" placeholder="••••" style="letter-spacing:8px;font-size:18px;text-align:center"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Konfirmasi PIN Baru</label>
+          <input id="s-pin2" type="password" maxlength="4" inputmode="numeric" placeholder="••••" style="letter-spacing:8px;font-size:18px;text-align:center"/>
+        </div>
+        <button class="btn btn-purple" onclick="savePin()">🔐 Simpan PIN Baru</button>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:800;font-size:14px;color:#111827;margin-bottom:14px">👤 Tambah Staff</div>
+        <div class="form-group">
+          <label class="form-label">Nama Staff</label>
+          <input id="s-staff" placeholder="Nama staff baru..."/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Role</label>
+          <select id="s-role">
+            <option value="kasir">Kasir</option>
+            <option value="apoteker">Apoteker</option>
+          </select>
+        </div>
+        <button class="btn btn-blue" onclick="addStaff()">➕ Tambah Staff</button>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:800;font-size:14px;color:#111827;margin-bottom:12px">👥 Daftar Staff</div>
+        ${state.staffList.map(s=>`
+          <div class="tx-item">
+            <div>
+              <div style="font-size:13px;font-weight:600;color:#111827">${s.name}</div>
+              <div style="font-size:11px;color:#6b7280">${s.role}</div>
+            </div>
+            <button onclick="removeStaff(${s.id})" style="background:#fee2e2;border:none;border-radius:8px;padding:4px 10px;color:#dc2626;font-size:11px;font-weight:700;cursor:pointer">Hapus</button>
+          </div>
+        `).join('') || '<div style="color:#9ca3af;font-size:12px;text-align:center;padding:10px 0">Belum ada staff</div>'}
+      </div>
+
+    </div>
+  `;
+}
+
+function savePin() {
+  const pin = document.getElementById('s-pin')?.value;
+  const pin2 = document.getElementById('s-pin2')?.value;
+  if(!pin || pin.length !== 4) { showToast('⚠️ PIN harus 4 digit!'); return; }
+  if(pin !== pin2) { showToast('⚠️ PIN tidak cocok!'); return; }
+  localStorage.setItem('apoteker_pin', pin);
+  showToast('✅ PIN berhasil diubah!');
+}
+
+function saveSettings() {
+  const name = document.getElementById('s-name')?.value?.trim();
+  if(!name) { showToast('⚠️ Nama apotek tidak boleh kosong!'); return; }
+  APOTEK_NAME = name;
+  localStorage.setItem('apotek_name', name);
+  showToast('✅ Nama apotek berhasil diubah!');
+  render();
+}
+
+async function addStaff() {
+  const name = document.getElementById('s-staff')?.value?.trim();
+  const role = document.getElementById('s-role')?.value;
+  if(!name) { showToast('⚠️ Nama staff wajib diisi!'); return; }
+  try {
+    await db.from('staff').insert({name,role,is_active:true});
+    showToast(`✅ ${name} ditambahkan!`);
+    const {data} = await db.from('staff').select('*').eq('is_active',true).order('name');
+    state.staffList = data||[];
+    render();
+  } catch(e) { showToast('❌ Error: '+(e?.message||e?.details||JSON.stringify(e))); }
+}
+
+async function removeStaff(id) {
+  try {
+    await db.from('staff').update({is_active:false}).eq('id',id);
+    showToast('✅ Staff dinonaktifkan');
+    const {data} = await db.from('staff').select('*').eq('is_active',true).order('name');
+    state.staffList = data||[];
+    render();
+  } catch(e) { showToast('❌ Error: '+(e?.message||e?.details||JSON.stringify(e))); }
+}
+
+window.onload = () => {
+  // Timeout 15 detik — kalau Supabase ga konek, langsung masuk login
+  const timeout = setTimeout(()=>{
+    console.warn('Supabase timeout — loading offline mode');
+    render();
+  }, 15000);
+
+  db.from('staff').select('*').eq('is_active',true).order('name')
+    .then(({data,error})=>{
+      clearTimeout(timeout);
+      state.staffList = data||[];
+      render();
+    })
+    .catch(()=>{
+      clearTimeout(timeout);
+      render();
+    });
+};
+</script>
+
+<div id="app">
+  <div class="loading"><div class="spinner"></div>Memuat PharmStock AI...</div>
+</div>
+
+</body>
+</html>
+
+
+  /* ── SUCCESS ── */
+  .success-page{min-height:100vh;background:#f0fdf4;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:24px;max-width:480px;margin:0 auto}
+  @keyframes pop{0%{transform:scale(.5);opacity:0}70%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}
+  .pop{animation:pop .5s ease}
+
+  /* Chart container */
+  .chart-wrap{position:relative;height:140px;margin-top:10px}
 </style>
 </head>
 <body>
